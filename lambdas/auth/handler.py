@@ -92,6 +92,19 @@ def create_session(email):
         "expiresAt": expires_at_dt.isoformat(),
     }
 
+def get_token_from_event(event):
+    headers = event.get("headers") or {}
+
+    authorization = headers.get("authorization") or headers.get("Authorization")
+
+    if not authorization:
+        return None
+
+    if not authorization.startswith("Bearer "):
+        return None
+
+    return authorization.replace("Bearer ", "", 1).strip()
+
 def handle_signup(event):
     body = parse_body(event)
 
@@ -180,6 +193,35 @@ def handle_login(event):
         "expiresAt": session["expiresAt"],
     })
     
+def handle_me(event):
+    token = get_token_from_event(event)
+
+    if not token:
+        return response(401, {"message": "Missing or invalid authorization header."})
+
+    try:
+        result = sessions_table.get_item(
+            Key={"token": token}
+        )
+    except ClientError as error:
+        print("DynamoDB error:", error)
+        return response(500, {"message": "Could not verify session."})
+
+    session = result.get("Item")
+
+    if not session:
+        return response(401, {"message": "Invalid or expired session."})
+
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
+
+    if int(session["expiresAt"]) < now_epoch:
+        return response(401, {"message": "Session expired."})
+
+    return response(200, {
+        "email": session["email"],
+        "message": "Session is valid.",
+    })
+    
 
 def lambda_handler(event, context):
     route = event.get("rawPath")
@@ -189,5 +231,8 @@ def lambda_handler(event, context):
 
     if route == "/login":
         return handle_login(event)
+
+    if route == "/me":
+        return handle_me(event)
 
     return response(404, {"message": "Route not found."})
