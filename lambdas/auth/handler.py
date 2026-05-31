@@ -63,6 +63,13 @@ def hash_password(password, salt_hex=None):
         "passwordHash": password_hash.hex(),
     }
 
+def verify_password(password, salt, stored_password_hash):
+    hashed = hash_password(password, salt)
+
+    return hmac.compare_digest(
+        hashed["passwordHash"],
+        stored_password_hash,
+    )
 
 def handle_signup(event):
     body = parse_body(event)
@@ -108,11 +115,54 @@ def handle_signup(event):
         "email": email,
     })
 
+def handle_login(event):
+    body = parse_body(event)
+
+    if body is None:
+        return response(400, {"message": "Invalid JSON body."})
+
+    email = str(body.get("email", "")).strip().lower()
+    password = str(body.get("password", ""))
+
+    if not email or not password:
+        return response(400, {"message": "Email and password are required."})
+
+    try:
+        result = users_table.get_item(
+            Key={"email": email}
+        )
+
+    except ClientError as error:
+        print("DynamoDB error:", error)
+        return response(500, {"message": "Could not log in."})
+
+    user = result.get("Item")
+
+    if not user:
+        return response(401, {"message": "Invalid email or password."})
+
+    password_is_valid = verify_password(
+        password=password,
+        salt=user["salt"],
+        stored_password_hash=user["passwordHash"],
+    )
+
+    if not password_is_valid:
+        return response(401, {"message": "Invalid email or password."})
+
+    return response(200, {
+        "message": "Login successful.",
+        "email": email,
+    })
+    
 
 def lambda_handler(event, context):
     route = event.get("rawPath")
 
     if route == "/signup":
         return handle_signup(event)
+
+    if route == "/login":
+        return handle_login(event)
 
     return response(404, {"message": "Route not found."})
