@@ -4,7 +4,7 @@ import re
 import hmac
 import hashlib
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import boto3
 from botocore.exceptions import ClientError
@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource("dynamodb")
 users_table = dynamodb.Table(os.environ["USERS_TABLE"])
+sessions_table = dynamodb.Table(os.environ["SESSIONS_TABLE"])
 
 
 def response(status_code, body):
@@ -70,6 +71,26 @@ def verify_password(password, salt, stored_password_hash):
         hashed["passwordHash"],
         stored_password_hash,
     )
+
+def create_session(email):
+    token = secrets.token_urlsafe(32)
+
+    expires_at_dt = datetime.now(timezone.utc) + timedelta(days=7)
+    expires_at_epoch = int(expires_at_dt.timestamp())
+
+    sessions_table.put_item(
+        Item={
+            "token": token,
+            "email": email,
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "expiresAt": expires_at_epoch,
+        }
+    )
+
+    return {
+        "token": token,
+        "expiresAt": expires_at_dt.isoformat(),
+    }
 
 def handle_signup(event):
     body = parse_body(event)
@@ -150,9 +171,13 @@ def handle_login(event):
     if not password_is_valid:
         return response(401, {"message": "Invalid email or password."})
 
+    session = create_session(email)
+
     return response(200, {
         "message": "Login successful.",
         "email": email,
+        "token": session["token"],
+        "expiresAt": session["expiresAt"],
     })
     
 
