@@ -68,17 +68,20 @@ class AuthStack(Stack):
         sessions_table.grant_read_write_data(auth_lambda)
 
         # API G8WY
+        # Lambda Integration
         auth_integration = HttpLambdaIntegration(
             "AuthLambdaIntegration",
             auth_lambda,
         )
 
+        # Headers and CORS
         http_api = HttpApi(
             self,
             "ReceiptAuthApi",
             cors_preflight={
                 "allow_origins": ["*"],
                 "allow_methods": [
+                    CorsHttpMethod.GET,
                     CorsHttpMethod.POST,
                     CorsHttpMethod.OPTIONS,
                 ],
@@ -86,6 +89,7 @@ class AuthStack(Stack):
             },
         )
 
+        # Routes
         http_api.add_routes(
             path="/signup",
             methods=[HttpMethod.POST],
@@ -95,6 +99,12 @@ class AuthStack(Stack):
         http_api.add_routes(
             path="/login",
             methods=[HttpMethod.POST],
+            integration=auth_integration,
+        )
+        
+        http_api.add_routes(
+            path="/me",
+            methods=[HttpMethod.GET],
             integration=auth_integration,
         )
 
