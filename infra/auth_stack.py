@@ -85,7 +85,10 @@ class AuthStack(Stack):
                     CorsHttpMethod.POST,
                     CorsHttpMethod.OPTIONS,
                 ],
-                "allow_headers": ["Content-Type"],
+                "allow_headers": [
+                    "Content-Type",
+                    "Authorization"
+                ],
             },
         )
 
