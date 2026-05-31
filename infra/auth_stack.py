@@ -20,6 +20,8 @@ class AuthStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
 
+        # Database Tables
+        #Users
         users_table = dynamodb.Table(
             self,
             "UsersTable",
@@ -31,7 +33,23 @@ class AuthStack(Stack):
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
         )
+        
+        # Track Sessions
+        sessions_table = dynamodb.Table(
+            self,
+            "SessionsTable",
+            table_name="ReceiptSessions",
+            partition_key=dynamodb.Attribute(
+                name="token",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            time_to_live_attribute="expiresAt",
+            removal_policy=RemovalPolicy.DESTROY,
+        )
 
+        # Lambdas
+        # Auth Code:
         auth_lambda = _lambda.Function(
             self,
             "AuthLambda",
@@ -41,11 +59,15 @@ class AuthStack(Stack):
             timeout=Duration.seconds(10),
             environment={
                 "USERS_TABLE": users_table.table_name,
+                "SESSIONS_TABLE": sessions_table.table_name,
             },
         )
 
+        # Perms
         users_table.grant_read_write_data(auth_lambda)
+        sessions_table.grant_read_write_data(auth_lambda)
 
+        # API G8WY
         auth_integration = HttpLambdaIntegration(
             "AuthLambdaIntegration",
             auth_lambda,
